@@ -1,0 +1,5 @@
+  west init -m https://github.com/zephyrproject-rtos/zephyr --mr v3.2.0
+  cd zephyr
+  west update
+  west zephyr-export
+  west build -b  esp32c3_devkitm /Users/abhinavsingh/Documents/zephyrproject/Atlas-Grey  --pristine
