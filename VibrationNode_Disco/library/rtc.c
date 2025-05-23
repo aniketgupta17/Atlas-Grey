@@ -1,3 +1,4 @@
+
 #include<rtc.h>
  
 const struct device *const rtc = DEVICE_DT_GET(DT_ALIAS(rtc));

@@ -1,4 +1,10 @@
-
+/**
+ * @file rtc.h
+ * @brief RTC header file for time management in Zephyr-based systems
+ * 
+ * Author: Abhinav  
+ * Student ID: 48244178
+ */
 
 #include <zephyr/kernel.h>
 #include <zephyr/device.h>

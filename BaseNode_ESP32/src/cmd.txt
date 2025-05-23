@@ -2,4 +2,4 @@
   cd zephyr
   west update
   west zephyr-export
-  west build -b  esp32c3_devkitm /Users/abhinavsingh/Documents/zephyrproject/Atlas-Grey  --pristine
+  west build -b  esp32c3_devkitm /Users/abhinavsingh/Documents/zephyrproject/Atlas-Grey/BaseNode_ESP32  --pristine
