@@ -285,8 +285,8 @@
 // main.c
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
-#include "GattServer.h" // Include your own header file first
-#include "GattClient.h" // Include your own header file first
+#include "GattServer.h" 
+#include "GattClient.h" 
 
 void main(void)
 {
@@ -299,8 +299,5 @@ void main(void)
     }
 
     printk("BLE sensor module initialized successfully.\n");
-    // Your main application logic can continue here,
-    // or you can go into an infinite loop if the BLE events
-    // are the primary focus and handled by callbacks.
-    // For many Zephyr BLE apps, main just sets things up and then idles.
+
 }
