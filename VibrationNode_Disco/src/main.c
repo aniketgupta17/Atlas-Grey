@@ -16,8 +16,8 @@
 #define DEVICE_NAME_LEN (sizeof(DEVICE_NAME) - 1)
 #define MAX_VIBRATION_EVENTS 10
 #define GRAVITY 9.81
-#define VIBRATION_THRESHOLD 0.15
-#define STDDEV_THRESHOLD 0.5
+#define VIBRATION_THRESHOLD 0.2
+#define RMS_THRESHOLD 9.8
 #define SAMPLING_INTERVAL_MS 1000
 
 typedef struct {
@@ -42,35 +42,29 @@ static struct bt_uuid_128 custom_char_uuid = BT_UUID_INIT_128(
     0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22);
 
 
-static double last_stddev = 0.0;
-static char last_msg[8] = "Hello";
+static double last_rms = 0.0;
+static char last_msg[32];
 
-double calculate_stddev(int count) {
+double calculate_rms(int count) {
     if (count == 0) {
         return 0.0;
     }
 
-    double sum = 0.0, mean, stddev = 0.0;
-
+    double sum_squares = 0.0;
     for (int i = 0; i < count; i++) {
-        sum += vibration_events[i].deviation;
+        sum_squares += pow(vibration_events[i].magnitude, 2);
     }
-
-    mean = sum / count;
-
-    for (int i = 0; i < count; i++) {
-        stddev += pow(vibration_events[i].deviation - mean, 2);
-    }
-
-    return sqrt(stddev / count);
+    return sqrt(sum_squares / count);
 }
+
 
 static ssize_t read_ble_message(struct bt_conn *conn, const struct bt_gatt_attr *attr,
                                 void *buf, uint16_t len, uint16_t offset)
 {
-    printk("BLE read: stddev=%.4f, msg=%s\n", last_stddev, last_msg);
+    printk("BLE read: %s\n", last_msg);
     return bt_gatt_attr_read(conn, attr, buf, len, offset, last_msg, strlen(last_msg) + 1);
 }
+
 
 BT_GATT_SERVICE_DEFINE(hello_svc,
     BT_GATT_PRIMARY_SERVICE(&custom_svc_uuid),
@@ -164,15 +158,28 @@ static void vibration_trigger_handler(const struct device *dev,
             vibration_event_count++;
         }
 
-        printk("⚠️ Vibration detected: Mag=%.4f Δ=%.4f\n", mag, deviation);
+        printk("Vibration detected: Mag=%.4f Δ=%.4f\n", mag, deviation);
     }
 
         if (vibration_event_count == MAX_VIBRATION_EVENTS) {
-            // Only update last_stddev after FULL batch collected
-            last_stddev = calculate_stddev(MAX_VIBRATION_EVENTS);
-            strcpy(last_msg, last_stddev > STDDEV_THRESHOLD ? "Hey" : "Hello");
+            // Only update last_rms after FULL batch collected
+            last_rms = calculate_rms(MAX_VIBRATION_EVENTS);
 
-            printk("STDDEV of last 10 vibrations: %.4f\n", last_stddev);
+            // Get timestamp from the latest entry
+            struct rtc_time *time_info = &vibration_events[(vibration_event_index - 1 + MAX_VIBRATION_EVENTS) % MAX_VIBRATION_EVENTS].rtc_time;
+
+            if (vibration_events[(vibration_event_index - 1 + MAX_VIBRATION_EVENTS) % MAX_VIBRATION_EVENTS].rtc_valid) {
+                snprintf(last_msg, sizeof(last_msg), "%.2f@%02d:%02d:%02d", 
+                        last_rms,
+                        time_info->tm_hour,
+                        time_info->tm_min,
+                        time_info->tm_sec);
+            } else {
+                snprintf(last_msg, sizeof(last_msg), "%.2f@NoTime", last_rms);
+            }
+
+
+            printk("STDDEV of last 10 vibrations: %.4f\n", last_rms);
             printk("Logs and STDDEV reset after 10 readings.\n");
 
             // Reset count & index for next batch
@@ -186,6 +193,7 @@ static void vibration_trigger_handler(const struct device *dev,
     accel_z_out = z;
 }
 #endif
+#define BUFFER_SIZE 10
 
 int main(void)
 {
@@ -213,19 +221,64 @@ int main(void)
     sensor_attr_set(sensor_dev, SENSOR_CHAN_ACCEL_XYZ,
                     SENSOR_ATTR_SAMPLING_FREQUENCY, &odr);
 
-#ifdef CONFIG_LSM6DSL_TRIGGER
-    struct sensor_trigger trig = {
-        .type = SENSOR_TRIG_DATA_READY,
-        .chan = SENSOR_CHAN_ACCEL_XYZ,
-    };
-    if (sensor_trigger_set(sensor_dev, &trig, vibration_trigger_handler) < 0) {
-        printk("Trigger set failed\n");
-        return 0;
-    }
-#endif
-
     while (1) {
-        k_sleep(K_MSEC(SAMPLING_INTERVAL_MS));
+        if (sensor_sample_fetch_chan(sensor_dev, SENSOR_CHAN_ACCEL_XYZ) < 0) {
+            printk("Sample fetch failed\n");
+            continue;
+        }
+
+        sensor_channel_get(sensor_dev, SENSOR_CHAN_ACCEL_X, &accel_x_out);
+        sensor_channel_get(sensor_dev, SENSOR_CHAN_ACCEL_Y, &accel_y_out);
+        sensor_channel_get(sensor_dev, SENSOR_CHAN_ACCEL_Z, &accel_z_out);
+
+        double dx = sensor_value_to_double(&accel_x_out);
+        double dy = sensor_value_to_double(&accel_y_out);
+        double dz = sensor_value_to_double(&accel_z_out);
+
+        double mag = sqrt(dx * dx + dy * dy + dz * dz);
+        double deviation = fabs(mag - GRAVITY);
+
+        int i = vibration_event_index % MAX_VIBRATION_EVENTS;
+        vibration_events[i].magnitude = mag;
+        vibration_events[i].deviation = deviation;
+
+        if (rtc_get_time(rtc, &vibration_events[i].rtc_time) == 0) {
+            vibration_events[i].rtc_valid = true;
+        } else {
+            vibration_events[i].rtc_valid = false;
+        }
+
+        vibration_event_index++;
+        if (vibration_event_count < MAX_VIBRATION_EVENTS) {
+            vibration_event_count++;
+        }
+
+        if (deviation > VIBRATION_THRESHOLD) {
+            printk("Vibration detected: Mag=%.4f Δ=%.4f\n", mag, deviation);
+        }
+
+        if (vibration_event_count == MAX_VIBRATION_EVENTS) {
+            last_rms = calculate_rms(MAX_VIBRATION_EVENTS);
+            struct rtc_time *time_info = &vibration_events[(vibration_event_index - 1 + MAX_VIBRATION_EVENTS) % MAX_VIBRATION_EVENTS].rtc_time;
+
+            if (vibration_events[(vibration_event_index - 1 + MAX_VIBRATION_EVENTS) % MAX_VIBRATION_EVENTS].rtc_valid) {
+                snprintf(last_msg, sizeof(last_msg), "%.2f@%02d:%02d:%02d", 
+                        last_rms,
+                        time_info->tm_hour,
+                        time_info->tm_min,
+                        time_info->tm_sec);
+            } else {
+                snprintf(last_msg, sizeof(last_msg), "%.4f@NoTime", last_rms);
+            }
+
+            printk("RMS of last %d samples: %.4f\n", MAX_VIBRATION_EVENTS, last_rms);
+
+            vibration_event_count = 0;
+            vibration_event_index = 0;
+            memset(vibration_events, 0, sizeof(vibration_events));
+        }
+
+        k_sleep(K_MSEC(SAMPLING_INTERVAL_MS));  
     }
 
     return 0;
