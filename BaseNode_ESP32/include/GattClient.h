@@ -6,4 +6,6 @@
 #include <zephyr/sys/printk.h>
 #include <zephyr/sys/byteorder.h>
 
-int gatt_sensor_ble_client_init(void);
+typedef void (*gatt_client_done_cb_t)(void);
+
+int gatt_sensor_ble_client_init(gatt_client_done_cb_t done_cb);

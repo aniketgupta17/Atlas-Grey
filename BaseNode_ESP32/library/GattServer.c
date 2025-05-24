@@ -118,10 +118,15 @@ int gatt_sensor_ble_server_init(void)
 {
     printk("Initializing BLE vibration sensor server...\n");
 
-    int err = bt_enable(bt_ready);
-    if (err) {
-        printk("Bluetooth enable failed (err %d)\n", err);
-        return err;
+    printk("Bluetooth initialized. Registering connection callbacks...\n");
+    bt_conn_cb_register(&conn_callbacks);
+
+    int adv_err = bt_le_adv_start(BT_LE_ADV_CONN, ad, ARRAY_SIZE(ad), NULL, 0);
+    if (adv_err) {
+        printk("Advertising failed to start (err %d)\n", adv_err);
+        return;
     }
+
+    printk("Advertising as \"%s\" with custom UUID\n", DEVICE_NAME);
     return 0; // Success
 }

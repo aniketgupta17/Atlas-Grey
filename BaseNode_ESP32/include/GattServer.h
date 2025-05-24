@@ -10,5 +10,3 @@
 
 
 int gatt_sensor_ble_server_init(void);
-
-
