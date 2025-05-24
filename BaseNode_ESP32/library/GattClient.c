@@ -12,7 +12,7 @@ static gatt_client_done_cb_t client_done_cb = NULL;
 
 #define MAX_RETRIES 3
 #define MAX_DISCOVERY_RETRIES 2
-#define RETRY_BACKOFF_MS 500 // Delay between retries in milliseconds
+#define RETRY_BACKOFF_MS 500 
 
 static struct bt_uuid_128 target_uuid = BT_UUID_INIT_128(
     0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11,
@@ -342,4 +342,4 @@ int gatt_sensor_ble_client_init(gatt_client_done_cb_t done_cb)
 
 
 
-// this is doung 
+

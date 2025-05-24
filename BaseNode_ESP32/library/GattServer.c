@@ -1,10 +1,6 @@
-// vibrationsensor_ble.c
-#include "GattServer.h" // Include your own header file first
 
-// Internal includes (if not already in your header, but for Zephyr, they often are)
-// #include <zephyr/kernel.h>
-// #include <zephyr/bluetooth/bluetooth.h>
-// ... (all original includes)
+#include "GattServer.h" 
+
 
 #define DEVICE_NAME "vibrationsensor"
 #define DEVICE_NAME_LEN (sizeof(DEVICE_NAME) - 1)
@@ -25,16 +21,13 @@ static struct bt_uuid_128 custom_char_uuid = BT_UUID_INIT_128(
     0x22, 0x22,
     0x22, 0x22, 0x22, 0x22, 0x22, 0x22);
 
-// Read callback: returns "Hello"
+
 static ssize_t read_hello(struct bt_conn *conn, const struct bt_gatt_attr *attr,
                           void *buf, uint16_t len, uint16_t offset)
 {
     const char *value = "Hello";
     printk("read_hello called\n");
 
-    // Consider if you really want to stop advertising on every read.
-    // In a real application, you might want to restart advertising in disconnected
-    // or keep it running if you allow multiple connections or rapid re-connections.
     int err = bt_le_adv_stop();
     if (err) {
         printk("Failed to stop advertising (err %d)\n", err);
@@ -76,8 +69,7 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
     bt_addr_le_to_str(bt_conn_get_dst(conn), addr_str, sizeof(addr_str));
     printk("Disconnected from %s (reason=%u)\n", addr_str, reason);
 
-    // After disconnection, you might want to restart advertising to allow new connections
-    // For now, let's keep it as is, but this is a common place to restart advertising.
+
     int adv_err = bt_le_adv_start(BT_LE_ADV_CONN, ad, ARRAY_SIZE(ad), NULL, 0);
     if (adv_err) {
         printk("Advertising failed to restart (err %d)\n", adv_err);
@@ -128,5 +120,5 @@ int gatt_sensor_ble_server_init(void)
     }
 
     printk("Advertising as \"%s\" with custom UUID\n", DEVICE_NAME);
-    return 0; // Success
+    return 0; 
 }
