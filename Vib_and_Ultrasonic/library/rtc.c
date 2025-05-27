@@ -1,4 +1,3 @@
-
 #include<rtc.h>
  
 const struct device *const rtc = DEVICE_DT_GET(DT_ALIAS(rtc));
@@ -8,10 +7,10 @@ int set_date_time(const struct device *rtc)
    int ret = 0;
    struct rtc_time tm = {
      .tm_year = 2025 - 1900,
-     .tm_mon = 11 - 1,
-     .tm_mday = 17,
-     .tm_hour = 4,
-     .tm_min = 19,
+     .tm_mon = 5 - 1,
+     .tm_mday = 29,
+     .tm_hour = 0,
+     .tm_min = 0,
      .tm_sec = 0,
    };
  

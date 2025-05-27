@@ -59,15 +59,9 @@ static struct bt_uuid_128 custom_svc_uuid = BT_UUID_INIT_128(
 static struct bt_uuid_128 custom_char_uuid = BT_UUID_INIT_128(
     0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22,
     0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22);
-static struct bt_uuid_128 ultrasonic_svc_uuid = BT_UUID_INIT_128(
-    0x33, 0x33, 0x33, 0x33, 0x33, 0x33, 0x33, 0x33,
-    0x33, 0x33, 0x33, 0x33, 0x33, 0x33, 0x33, 0x33);
-static struct bt_uuid_128 ultrasonic_char_uuid = BT_UUID_INIT_128(
-    0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44,
-    0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44);
 
 static double last_rms = 0.0;
-static char last_msg[32];
+static char last_msg[64];
 
 double calculate_rms(int count) {
     if (count == 0) {
@@ -96,15 +90,8 @@ double calculate_ultrasonic_rms(int count) {
 static ssize_t read_ble_message(struct bt_conn *conn, const struct bt_gatt_attr *attr,
                                 void *buf, uint16_t len, uint16_t offset)
 {
-    printk("BLE read vibration: %s\n", last_msg);
+    printk("BLE read combined: %s\n", last_msg);
     return bt_gatt_attr_read(conn, attr, buf, len, offset, last_msg, strlen(last_msg) + 1);
-}
-
-static ssize_t read_ultrasonic_message(struct bt_conn *conn, const struct bt_gatt_attr *attr,
-                                void *buf, uint16_t len, uint16_t offset)
-{
-    printk("BLE read ultrasonic: %s\n", ultrasonic_msg);
-    return bt_gatt_attr_read(conn, attr, buf, len, offset, ultrasonic_msg, strlen(ultrasonic_msg) + 1);
 }
 
 BT_GATT_SERVICE_DEFINE(hello_svc,
@@ -113,21 +100,15 @@ BT_GATT_SERVICE_DEFINE(hello_svc,
                            BT_GATT_PERM_READ, read_ble_message, NULL, NULL),
 );
 
-BT_GATT_SERVICE_DEFINE(ultrasonic_svc,
-    BT_GATT_PRIMARY_SERVICE(&ultrasonic_svc_uuid),
-    BT_GATT_CHARACTERISTIC(&ultrasonic_char_uuid.uuid, BT_GATT_CHRC_READ,
-                           BT_GATT_PERM_READ, read_ultrasonic_message, NULL, NULL),
-);
-
 static const struct bt_data ad[] = {
     BT_DATA_BYTES(BT_DATA_FLAGS, BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR),
-    BT_DATA(BT_DATA_NAME_COMPLETE, DEVICE_NAME, DEVICE_NAME_LEN),
+    BT_DATA_BYTES(BT_DATA_UUID128_ALL, // Service UUID
+        0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11,
+        0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11)
 };
 
 static const struct bt_data sd[] = {
-    BT_DATA_BYTES(BT_DATA_UUID128_ALL,
-        0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11,
-        0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11),
+    BT_DATA(BT_DATA_NAME_COMPLETE, DEVICE_NAME, DEVICE_NAME_LEN)
 };
 
 static void connected(struct bt_conn *conn, uint8_t err)
@@ -193,30 +174,11 @@ static void process_ultrasonic_data(void)
         ultrasonic_reading_count++;
     }
     
-    // If we have enough readings, calculate RMS and update BLE characteristic
+    // If we have enough readings, calculate RMS
     if (ultrasonic_reading_count == MAX_VIBRATION_EVENTS) {
         ultrasonic_last_rms = calculate_ultrasonic_rms(MAX_VIBRATION_EVENTS);
-        
-        // Get current time - synchronized with vibration sensor
-        struct rtc_time time_info;
-        bool time_valid = false;
-        
-        if (rtc_get_time(rtc, &time_info) == 0) {
-            time_valid = true;
-            snprintf(ultrasonic_msg, sizeof(ultrasonic_msg), "%.2f@%02d:%02d:%02d", 
-                    ultrasonic_last_rms,
-                    time_info.tm_hour,
-                    time_info.tm_min,
-                    time_info.tm_sec);
-        } else {
-            snprintf(ultrasonic_msg, sizeof(ultrasonic_msg), "%.2f@NoTime", ultrasonic_last_rms);
-        }
-        
-        printk("Ultrasonic RMS: %.2f\n", ultrasonic_last_rms);
-        
-        // Signal vibration sensor that we're ready to advertise
-        k_sem_give(&sensor_sync_sem);
-        
+        printk("Ultrasonic RMS calculated: %.2f\n", ultrasonic_last_rms);
+                
         // Reset for next batch of readings
         ultrasonic_reading_count = 0;
         ultrasonic_reading_index = 0;
@@ -232,8 +194,8 @@ int main(void)
     atomic_set(&ultrasonic_system_ready, 0);
     atomic_set(&ultrasonic_last_distance_mm, 0);
     
-    // Default values for ultrasonic message
-    strcpy(ultrasonic_msg, "0.00@NoTime");
+    // Default value for the combined message
+    strcpy(last_msg, "0.00,0.00@NoTime"); // [Gemini] Updated default message format
 
     if (bt_enable(bt_ready) != 0) {
         printk("BLE enable failed\n");
@@ -337,38 +299,43 @@ int main(void)
 
         if (vibration_event_count == MAX_VIBRATION_EVENTS) {
             last_rms = calculate_rms(MAX_VIBRATION_EVENTS);
+            printk("Vibration RMS calculated: %.2f\n", last_rms);
+
+            // Process ultrasonic data to get its RMS value
+            // This will update ultrasonic_last_rms if a full batch is ready
+            process_ultrasonic_data();
             
-            // Get current time
+            // Get current time for the combined message
             struct rtc_time current_time;
             bool current_time_valid = false;
             
             if (rtc_get_time(rtc, &current_time) == 0) {
                 current_time_valid = true;
-                snprintf(last_msg, sizeof(last_msg), "%.2f@%02d:%02d:%02d", 
+                snprintf(last_msg, sizeof(last_msg), "%.2f,%.2f@%02d:%02d:%02d", 
                         last_rms,
+                        ultrasonic_last_rms, // Use the latest calculated ultrasonic_last_rms
                         current_time.tm_hour,
                         current_time.tm_min,
                         current_time.tm_sec);
             } else {
-                snprintf(last_msg, sizeof(last_msg), "%.4f@NoTime", last_rms);
+                snprintf(last_msg, sizeof(last_msg), "%.2f,%.2f@NoTime", 
+                         last_rms, ultrasonic_last_rms);
             }
 
-            printk("RMS of last %d samples: %.4f\n", MAX_VIBRATION_EVENTS, last_rms);
+            printk("Combined BLE message: %s\n", last_msg);
 
-            // Wait for ultrasonic sensor to be ready or timeout after 100ms
-            if (atomic_get(&ultrasonic_system_ready) == 1) {
-                if (k_sem_take(&sensor_sync_sem, K_MSEC(100)) == 0) {
-                    printk("Synchronized update with ultrasonic sensor\n");
-                }
-            }
-
+            // Reset vibration data for next batch
             vibration_event_count = 0;
             vibration_event_index = 0;
             memset(vibration_events, 0, sizeof(vibration_events));
         }
         
-        // Process ultrasonic sensor data
-        process_ultrasonic_data();
+        // Call process_ultrasonic_data in each loop iteration if not called above
+        // This ensures it keeps processing its own batches even if vibration batch isn't full yet.
+        // However, the BLE message is only updated when vibration batch is full.
+        if (vibration_event_count != MAX_VIBRATION_EVENTS) {
+             process_ultrasonic_data();
+        }
 
         k_sleep(K_MSEC(SAMPLING_INTERVAL_MS));  
     }
