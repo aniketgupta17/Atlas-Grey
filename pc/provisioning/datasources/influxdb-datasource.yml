@@ -1,0 +1,17 @@
+apiVersion: 1
+
+datasources:
+  - name: InfluxDB
+    uid: influxdb_ds_bridge
+    type: influxdb
+    access: proxy
+    orgId: 1
+    url: http://influxdb:8086
+    editable: true
+    jsonData:
+      version: Flux
+      organization: bridge_org
+      defaultBucket: bridge_monitoring
+      tlsSkipVerify: true
+    secureJsonData:
+      token: bridge_monitor_token 

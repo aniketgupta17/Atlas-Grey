@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  influxdb:
+    image: influxdb:2.7
+    container_name: bridge_influx
+    ports: 
+      - "8086:8086"
+    volumes: 
+      - "./vol/influxdb2:/var/lib/influxdb2"
+    environment:
+      - DOCKER_INFLUXDB_INIT_MODE=setup
+      - DOCKER_INFLUXDB_INIT_USERNAME=admin
+      - DOCKER_INFLUXDB_INIT_PASSWORD=admin123
+      - DOCKER_INFLUXDB_INIT_ORG=bridge_org
+      - DOCKER_INFLUXDB_INIT_BUCKET=bridge_monitoring
+      - DOCKER_INFLUXDB_INIT_RETENTION=90d
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=bridge_monitor_token
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8086/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:10.4.2
+    container_name: bridge_grafana
+    ports: 
+      - "3000:3000"
+    volumes: 
+      - "./vol/grafana:/var/lib/grafana"
+      - "./dashboards:/var/lib/grafana/dashboards"
+      - "./provisioning:/etc/grafana/provisioning"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_INSTALL_PLUGINS=grafana-worldmap-panel
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/var/lib/grafana/dashboards/bridge-monitoring.json
+    depends_on:
+      influxdb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
+  mqtt:
+    image: eclipse-mosquitto:2.0
+    container_name: bridge_mqtt
+    ports: 
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - "./vol/mosquitto/config:/mosquitto/config"
+      - "./vol/mosquitto/data:/mosquitto/data" 
+      - "./vol/mosquitto/log:/mosquitto/log"

@@ -1,0 +1,442 @@
+{
+    "uid": "bridge-monitor",
+    "title": "Intelligent Bridge Monitoring System",
+    "schemaVersion": 37,
+    "time": { "from": "now-30m", "to": "now" },
+    "refresh": "5s",
+    "panels": [
+      {
+        "type": "stat",
+        "title": "Bridge Safety Score",
+        "datasource": { "type": "influxdb", "uid": "influxdb_ds_bridge" },
+        "gridPos": { "h": 8, "w": 6, "x": 0, "y": 0 },
+        "options": {
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"],
+            "fields": ""
+          },
+          "orientation": "auto",
+          "textMode": "auto",
+          "colorMode": "background",
+          "graphMode": "area",
+          "justifyMode": "center"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "red", "value": 0 },
+                { "color": "orange", "value": 40 },
+                { "color": "yellow", "value": 70 },
+                { "color": "green", "value": 85 }
+              ]
+            },
+            "min": 0,
+            "max": 100,
+            "unit": "percent"
+          }
+        },
+        "targets": [
+          {
+            "query": "from(bucket:\"bridge_monitoring\")\n  |> range(start:-5m)\n  |> filter(fn:(r) => r._measurement == \"bridge_status\" and r._field == \"safety_score\")\n  |> last()",
+            "hide": false,
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "type": "stat",
+        "title": "Boom Gate Status",
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influxdb_ds_bridge"
+        },
+        "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+        "options": {
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"],
+            "fields": ""
+          },
+          "orientation": "auto",
+          "textMode": "value",
+          "colorMode": "background",
+          "graphMode": "none",
+          "justifyMode": "center"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "green", "value": 0 },
+                { "color": "yellow", "value": 1 },
+                { "color": "red", "value": 2 }
+              ]
+            },
+            "mappings": [
+              { "options": { "0": { "text": "OPEN" } }, "type": "value" },
+              { "options": { "1": { "text": "WARN" } }, "type": "value" },
+              { "options": { "2": { "text": "CLOSED" } }, "type": "value" }
+            ]
+          }
+        },
+        "targets": [
+          {
+            "query": "from(bucket:\"bridge_monitoring\")\n  |> range(start:-5m)\n  |> filter(fn:(r) => r._measurement == \"bridge_status\" and r._field == \"boom_gate_status\")\n  |> last()",
+            "hide": false,
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "type": "stat",
+        "title": "Last Data Received",
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influxdb_ds_bridge"
+        },
+        "gridPos": { "h": 4, "w": 6, "x": 6, "y": 4 },
+        "options": {
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"],
+            "fields": ""
+          },
+          "orientation": "auto",
+          "textMode": "auto",
+          "colorMode": "none",
+          "graphMode": "none",
+          "justifyMode": "center"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "dateTimeFromNow"
+          }
+        },
+        "targets": [
+          {
+            "query": "from(bucket:\"bridge_monitoring\")\n  |> range(start: -6h)\n  |> filter(fn:(r) => r._measurement == \"sensor_data\")\n  |> group(columns: [])\n  |> max(column: \"_time\")\n  |> map(fn: (r) => ({_value: r._time, _time: r._time}))",
+            "hide": false,
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "type": "gauge",
+        "title": "Water Level Clearance (cm)",
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influxdb_ds_bridge"
+        },
+        "gridPos": { "h": 8, "w": 6, "x": 12, "y": 0 },
+        "options": {
+          "orientation": "auto",
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"],
+            "fields": ""
+          },
+          "showThresholdLabels": false,
+          "showThresholdMarkers": true,
+          "min": 0,
+          "max": 500
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "red", "value": 0 },
+                { "color": "orange", "value": 50 },
+                { "color": "yellow", "value": 100 },
+                { "color": "green", "value": 200 }
+              ]
+            },
+            "unit": "cm"
+          }
+        },
+        "targets": [
+          {
+            "query": "from(bucket:\"bridge_monitoring\")\n  |> range(start:-5m)\n  |> filter(fn:(r) => r._measurement == \"sensor_data\" and r._field == \"ultrasonic_distance\")\n  |> last()",
+            "hide": false,
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "type": "gauge",
+        "title": "Bridge Vibration RMS (g)",
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influxdb_ds_bridge"
+        },
+        "gridPos": { "h": 8, "w": 6, "x": 18, "y": 0 },
+        "options": {
+          "orientation": "auto",
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"],
+            "fields": ""
+          },
+          "showThresholdLabels": false,
+          "showThresholdMarkers": true,
+          "min": 0,
+          "max": 2
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "green", "value": 0 },
+                { "color": "yellow", "value": 0.5 },
+                { "color": "orange", "value": 1.0 },
+                { "color": "red", "value": 1.5 }
+              ]
+            },
+            "unit": "short",
+            "decimals": 3
+          }
+        },
+        "targets": [
+          {
+            "query": "import \"math\"\n\nfrom(bucket:\"bridge_monitoring\")\n  |> range(start:-5m)\n  |> filter(fn:(r) => r._measurement == \"sensor_data\" and (r._field == \"accel_x\" or r._field == \"accel_y\" or r._field == \"accel_z\"))\n  |> pivot(rowKey:[\"_time\"], columnKey:[\"_field\"], valueColumn:\"_value\")\n  |> filter(fn:(r) => exists r.accel_x and exists r.accel_y and exists r.accel_z)\n  |> map(fn:(r) => ({ _time: r._time, _value: math.sqrt(x: float(v: r.accel_x*r.accel_x + r.accel_y*r.accel_y + r.accel_z*r.accel_z)) }))\n  |> aggregateWindow(every: 1s, fn: mean)",
+            "hide": false,
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "type": "timeseries",
+        "title": "Water Level Clearance History",
+        "datasource": { "type": "influxdb", "uid": "influxdb_ds_bridge" },
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+        "options": {
+          "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true },
+          "tooltip": { "mode": "multi", "sort": "none" }
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "unit": "cm",
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "linear",
+              "lineWidth": 2,
+              "fillOpacity": 10,
+              "gradientMode": "none",
+              "spanNulls": false,
+              "pointSize": 5,
+              "stacking": { "mode": "none", "group": "A" },
+              "axisPlacement": "auto",
+              "axisLabel": "",
+              "scaleDistribution": { "type": "linear" },
+              "hideFrom": { "legend": false, "tooltip": false, "vis": false },
+              "thresholdsStyle": { "mode": "line" }
+            },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "transparent", "value": null },
+                { "color": "red", "value": 50 },
+                { "color": "orange", "value": 100 },
+                { "color": "green", "value": 200 }
+              ]
+            }
+          }
+        },
+        "targets": [
+          {
+            "query": "from(bucket:\"bridge_monitoring\")\n  |> range(start:-30m)\n  |> filter(fn:(r) => r._measurement == \"sensor_data\" and r._field == \"ultrasonic_distance\")\n  |> aggregateWindow(every: 30s, fn: mean)",
+            "hide": false,
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "type": "timeseries",
+        "title": "Accelerometer Data (3-Axis)",
+        "datasource": { "type": "influxdb", "uid": "influxdb_ds_bridge" },
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+        "options": {
+          "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true },
+          "tooltip": { "mode": "multi", "sort": "none" }
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "unit": "short",
+            "decimals": 3,
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "linear",
+              "lineWidth": 1,
+              "fillOpacity": 0,
+              "gradientMode": "none",
+              "spanNulls": false,
+              "pointSize": 5,
+              "stacking": { "mode": "none", "group": "A" },
+              "axisPlacement": "auto",
+              "axisLabel": "Acceleration (g)",
+              "scaleDistribution": { "type": "linear" },
+              "hideFrom": { "legend": false, "tooltip": false, "vis": false }
+            }
+          }
+        },
+        "targets": [
+          {
+            "query": "from(bucket:\"bridge_monitoring\")\n  |> range(start:-30m)\n  |> filter(fn:(r) => r._measurement == \"sensor_data\" and (r._field == \"accel_x\" or r._field == \"accel_y\" or r._field == \"accel_z\"))\n  |> aggregateWindow(every: 10s, fn: mean)",
+            "hide": false,
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "type": "timeseries",
+        "title": "Vibration RMS Magnitude",
+        "datasource": { "type": "influxdb", "uid": "influxdb_ds_bridge" },
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+        "options": {
+          "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true },
+          "tooltip": { "mode": "multi", "sort": "none" }
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "continuous-GrYlRd"
+            },
+            "unit": "short",
+            "decimals": 3,
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "linear",
+              "lineWidth": 2,
+              "fillOpacity": 20,
+              "gradientMode": "hue",
+              "spanNulls": false,
+              "pointSize": 5,
+              "stacking": { "mode": "none", "group": "A" },
+              "axisPlacement": "auto",
+              "axisLabel": "RMS Acceleration (g)",
+              "scaleDistribution": { "type": "linear" },
+              "hideFrom": { "legend": false, "tooltip": false, "vis": false },
+              "thresholdsStyle": { "mode": "line" }
+            },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "transparent", "value": null },
+                { "color": "yellow", "value": 0.5 },
+                { "color": "orange", "value": 1.0 },
+                { "color": "red", "value": 1.5 }
+              ]
+            }
+          }
+        },
+        "targets": [
+          {
+            "query": "import \"math\"\n\nfrom(bucket:\"bridge_monitoring\")\n  |> range(start:-30m)\n  |> filter(fn:(r) => r._measurement == \"sensor_data\" and (r._field == \"accel_x\" or r._field == \"accel_y\" or r._field == \"accel_z\"))\n  |> pivot(rowKey:[\"_time\"], columnKey:[\"_field\"], valueColumn:\"_value\")\n  |> filter(fn:(r) => exists r.accel_x and exists r.accel_y and exists r.accel_z)\n  |> map(fn:(r) => ({ _time: r._time, _value: math.sqrt(x: float(v: r.accel_x*r.accel_x + r.accel_y*r.accel_y + r.accel_z*r.accel_z)) }))\n  |> aggregateWindow(every: 30s, fn: mean)",
+            "hide": false,
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "type": "table",
+        "title": "System Status Overview",
+        "datasource": { "type": "influxdb", "uid": "influxdb_ds_bridge" },
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+        "options": {
+          "showHeader": true,
+          "sortBy": [
+            {
+              "desc": true,
+              "displayName": "Time"
+            }
+          ]
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "custom": {
+              "align": "center",
+              "cellOptions": {
+                "type": "auto"
+              },
+              "inspect": false
+            },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "green", "value": null }
+              ]
+            }
+          },
+          "overrides": [
+            {
+              "matcher": { "id": "byName", "options": "boom_gate_status" },
+              "properties": [
+                {
+                  "id": "mappings",
+                  "value": [
+                    { "options": { "0": { "text": "OPEN", "color": "green" } }, "type": "value" },
+                    { "options": { "1": { "text": "WARN", "color": "yellow" } }, "type": "value" },
+                    { "options": { "2": { "text": "CLOSED", "color": "red" } }, "type": "value" }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "targets": [
+          {
+            "query": "from(bucket:\"bridge_monitoring\")\n  |> range(start:-5m)\n  |> filter(fn:(r) => r._measurement == \"bridge_status\")\n  |> pivot(rowKey:[\"_time\"], columnKey:[\"_field\"], valueColumn:\"_value\")\n  |> sort(columns:[\"_time\"], desc:true)\n  |> limit(n:10)",
+            "hide": false,
+            "refId": "A"
+          }
+        ]
+      }
+    ],
+    "templating": {
+      "list": []
+    },
+    "annotations": {
+      "list": [
+        {
+          "name": "Critical Events",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb_ds_bridge"
+          },
+          "enable": true,
+          "hide": false,
+          "iconColor": "red",
+          "query": "from(bucket:\"bridge_monitoring\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn:(r) => r._measurement == \"alerts\" and r._field == \"message\")",
+          "textColumn": "_value"
+        }
+      ]
+    },
+    "tags": ["bridge", "monitoring", "IoT", "structural-health"],
+    "timezone": "browser"
+  }
