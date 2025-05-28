@@ -9,10 +9,10 @@ FILE(GLOB app_sources src/*.c)
 # the path given needs to be relative to the
 # CMakeLists root, which is app/prac2 here,
 # hence the ../../lib.c.
-FILE(GLOB lib_sources library/*.c)
+# FILE(GLOB lib_sources library/*.c)
 
 # Tell CMake to build with the app and lib sources
 target_sources(app PRIVATE ${app_sources} ${lib_sources})
 
 # Tell CMake where our header files are
-target_include_directories(app PRIVATE include)
+# target_include_directories(app PRIVATE include)
