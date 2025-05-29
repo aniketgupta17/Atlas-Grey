@@ -1,6 +1,4 @@
-/*
- * Overlay for Ultrasonic sensor HC-SR04 on STM32L475 Discovery
- */
+
 / {
 	ultrasonic_sensor {
 		compatible = "gpio-keys";
@@ -22,7 +20,7 @@
 	};
 };
 
-/* Make sure GPIO ports are enabled */
+
 &gpioa {
 	status = "okay";
 };
