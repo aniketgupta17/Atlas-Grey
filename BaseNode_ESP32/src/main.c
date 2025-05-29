@@ -24,7 +24,7 @@ static struct bt_gatt_subscribe_params sub_params;
 static uint32_t packet_count = 0;
 static uint32_t total_bytes_received = 0;
 
-/* ---------- Helpers ---------------------------------------------------- */
+
 
 static void print_hex_data(const uint8_t *data, uint16_t length)
 {
