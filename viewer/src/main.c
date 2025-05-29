@@ -12,16 +12,38 @@
 #include <zephyr/sys/reboot.h>
 #include <stdlib.h>
 #include <ctype.h>
-#define MAX_RETRIES 8
-#define READ_INTERVAL_MS        2000
-#define RETRY_DELAY_MS            50
-#define RECONNECT_DELAY_MS      3000
-#define RELAY_MSG_SIZE            64
-#define RELAY_QUEUE_SIZE          10
+#define MAX_RETRIES              8
+#define READ_INTERVAL_MS      2000
+#define RETRY_DELAY_MS          50
+#define RECONNECT_DELAY_MS    3000
+#define RELAY_MSG_SIZE          64
+#define RELAY_QUEUE_SIZE        10
 volatile bool sink_subscribed = false;
 static struct bt_conn *disco_conn = NULL;
 static struct bt_conn *sink_conn;
 static uint16_t        disco_char_handle;
+
+static lv_obj_t *traffic_light[3];
+
+#define TL_DIAMETER   28
+#define TL_SPACING    32
+
+#define TL_D  28
+#define TL_S  32
+
+static const lv_color_t COL_BG     = LV_COLOR_MAKE(0x40,0x40,0x40);
+static const lv_color_t COL_GREEN  = LV_COLOR_MAKE(0x00,0xA0,0x00);
+static const lv_color_t COL_YELLOW = LV_COLOR_MAKE(0xFF,0xD0,0x00);
+static const lv_color_t COL_RED    = LV_COLOR_MAKE(0xE0,0x00,0x00);
+static lv_obj_t *tl[3];
+static lv_obj_t *lbl_ts, *lbl_dist, *lbl_vib;
+static lv_obj_t *gate_arm;
+static int       gate_state = 1;
+static bool      ui_ready   = false;
+static lv_obj_t *arm_open, *arm_closed; 
+static bool      gate_is_closed = true;
+
+static void ui_update(float dist_cm, float vib, const char *ts);
 
 static K_SEM_DEFINE(tx_sem, 1, 1);
 K_MSGQ_DEFINE(relay_msgq, RELAY_MSG_SIZE, RELAY_QUEUE_SIZE, 4);
@@ -320,11 +342,16 @@ static uint8_t read_cb(struct bt_conn *c, uint8_t err,
             char vib_s[8], dist_s[8];
             float_to_str2(kf.x[1], vib_s);
             float_to_str2(kf.x[0], dist_s);
+            float dist_cm = kf.x[0];
+            const char *ts_ptr = strchr(buf, '@');
+            ts_ptr = ts_ptr ? ts_ptr + 1 : "00:00:00";
+            ui_update(dist_cm, kf.x[1], ts_ptr);
 
-            char out_msg[20];
+            char out_msg[24];
             sprintf(out_msg, "%s,%s@%s",
                     vib_s, dist_s,
-                    strchr(buf, '@') ? strchr(buf, '@') + 1 : "00:00:00");
+                    strchr(buf,'@') ? strchr(buf,'@')+1 : "00:00:00");
+
             out_msg[sizeof(out_msg)-1] = '\0';
             printk("[RELAY-READ] Filtered string len=%d: \"%s\"\n", (int)strlen(out_msg), out_msg);
 
@@ -483,6 +510,175 @@ static void scan_cb(const bt_addr_le_t *addr, int8_t rssi, uint8_t type, struct 
     }
 }
 
+static void ui_gate_anim(int close)
+{
+    if (!ui_ready) return;
+    if (close && gate_state == 0) return;
+    if (!close && gate_state == 1) return;
+
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, gate_arm);
+    lv_anim_set_values(&a,
+                       close ?   0  : 900,
+                       close ? 900 :   0);
+    lv_anim_set_time(&a, 400);
+    lv_anim_set_exec_cb(&a,
+        (lv_anim_exec_xcb_t)lv_obj_set_style_transform_angle);
+    lv_anim_start(&a);
+
+    gate_state = close ? 0 : 1;
+}
+
+static void gate_set(bool closed)
+{
+    if (closed == gate_is_closed || !ui_ready) return;
+
+    if (closed) {
+        lv_obj_clear_flag(arm_closed, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag  (arm_open,   LV_OBJ_FLAG_HIDDEN);
+    } else {
+        lv_obj_clear_flag(arm_open,   LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag  (arm_closed, LV_OBJ_FLAG_HIDDEN);
+    }
+    gate_is_closed = closed;
+}
+
+static void ui_init(void)
+{
+    if (ui_ready) return;
+
+    const struct device *disp = DEVICE_DT_GET(DT_CHOSEN(zephyr_display));
+    if (!device_is_ready(disp)) {
+        printk("Display not ready – UI disabled\n");
+        return;
+    }
+
+    lv_obj_clean(lv_scr_act());
+    lv_obj_set_style_bg_color(lv_scr_act(), lv_color_black(), 0);
+
+    /* traffic light (top-right) */
+    lv_obj_t *box = lv_obj_create(lv_scr_act());
+    lv_obj_set_size(box, TL_D + 8, 3*TL_S + 8);
+    lv_obj_align(box, LV_ALIGN_TOP_RIGHT, -10, 10);
+    lv_obj_set_style_radius(box, 6, 0);
+    lv_obj_set_style_bg_color(box, COL_BG, 0);
+    lv_obj_set_style_pad_all(box, 4, 0);
+
+    for (int i = 0; i < 3; i++) {
+        tl[i] = lv_obj_create(box);
+        lv_obj_set_size(tl[i], TL_D, TL_D);
+        lv_obj_set_style_radius(tl[i], LV_RADIUS_CIRCLE, 0);
+        lv_obj_align(tl[i], LV_ALIGN_TOP_MID, 0, i * TL_S);
+        lv_obj_set_style_bg_color(tl[i], lv_color_black(), 0);
+    }
+
+
+    lbl_ts   = lv_label_create(lv_scr_act());
+    lbl_dist = lv_label_create(lv_scr_act());
+    lbl_vib  = lv_label_create(lv_scr_act());
+
+    lv_obj_set_style_text_color(lbl_ts, lv_color_white(), 0);
+    lv_obj_align(lbl_ts,   LV_ALIGN_TOP_RIGHT, -10, 10 + 3*TL_S + 12);
+    lv_obj_align(lbl_dist, LV_ALIGN_TOP_RIGHT, -10, 10 + 3*TL_S + 32);
+    lv_obj_align(lbl_vib,  LV_ALIGN_TOP_RIGHT, -10, 10 + 3*TL_S + 52);
+
+    /* boom-gate base & arms (bottom-centre) */
+    lv_obj_t *post = lv_obj_create(lv_scr_act());
+    lv_obj_set_size(post, 14, 40);
+    lv_obj_set_style_bg_color(post, COL_BG, 0);
+    lv_obj_set_style_radius(post, 3, 0);
+    lv_obj_align(post, LV_ALIGN_BOTTOM_MID, -130, -20);
+
+    /* closed (horizontal) */
+    arm_closed = lv_obj_create(lv_scr_act());
+    lv_obj_set_size(arm_closed, 160, 14);
+    lv_obj_set_style_bg_color(arm_closed, COL_RED, 0);
+    lv_obj_align_to(arm_closed, post, LV_ALIGN_OUT_RIGHT_TOP, 0, 20);
+
+    /* open (vertical) */
+    arm_open = lv_obj_create(lv_scr_act());
+    lv_obj_set_size(arm_open, 14, 160);
+    lv_obj_set_style_bg_color(arm_open, COL_RED, 0);
+    lv_obj_align_to(arm_open, post, LV_ALIGN_OUT_TOP_MID, 0, 0);
+    lv_obj_add_flag(arm_open, LV_OBJ_FLAG_HIDDEN);
+
+    display_blanking_off(disp);
+    ui_ready = true;
+}
+
+
+static void gate_anim_start(int close)
+{
+    if (!ui_ready) return;
+    if (close && gate_state == 0) return;
+    if (!close && gate_state == 1) return;
+
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, gate_arm);
+    lv_anim_set_values(&a,
+        close ?   0 : 90,
+        close ?  90 :  0);
+    lv_anim_set_time(&a, 400);
+    lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t)lv_obj_set_style_transform_angle);
+    lv_anim_start(&a);
+
+    gate_state = close ? 0 : 1;
+}
+
+
+static void ui_set_light(int idx_on)
+{
+    static const lv_color_t cols[3] = { COL_RED, COL_YELLOW, COL_GREEN };
+    for (int i = 0; i < 3; i++) {
+        lv_obj_set_style_bg_color(
+            traffic_light[i],
+            (i == idx_on) ? cols[i] : lv_color_black(), 0);
+    }
+}
+
+static void ui_update(float dist_cm, float vib, const char *ts)
+{
+    if (!ui_ready) return;
+
+    bool red_dist    = dist_cm < 10.0f;
+    bool yellow_dist = dist_cm < 15.0f && !red_dist;
+
+    bool red_vib     = vib > 1.20f;
+    bool yellow_vib  = vib >= 1.00f && vib <= 1.20f;
+
+    int state = 2; /* green */
+    if (red_dist || red_vib)            state = 0;
+    else if (yellow_dist || yellow_vib) state = 1;
+
+    const lv_color_t cols[3] = { COL_RED, COL_YELLOW, COL_GREEN };
+    for (int i = 0; i < 3; i++)
+        lv_obj_set_style_bg_color(tl[i],
+            (i == state) ? cols[i] : lv_color_black(), 0);
+
+    gate_set(state == 0);
+
+    char num[8], buf[24];
+
+    float_to_str2(dist_cm, num);
+    sprintf(buf, "Dist: %s cm", num);
+    lv_label_set_text(lbl_dist, buf);
+    lv_obj_set_style_text_color(lbl_dist,
+        red_dist ? COL_RED : yellow_dist ? COL_YELLOW : COL_GREEN, 0);
+
+    float_to_str2(vib, num);
+    sprintf(buf, "Vib : %s g", num);
+    lv_label_set_text(lbl_vib, buf);
+    lv_obj_set_style_text_color(lbl_vib,
+        red_vib ? COL_RED : yellow_vib ? COL_YELLOW : COL_GREEN, 0);
+
+    lv_label_set_text_fmt(lbl_ts, "T: %s", ts);
+}
+
+
+
+
 static void start_scan(void)
 {
     printk("[RELAY] Starting scan for Disco\n");
@@ -514,6 +710,11 @@ static void bt_ready(int err)
 int main(void)
 {
     printk("M5Core2 relay - build OK\n");
+    ui_init();
     bt_enable(bt_ready);
+    while (1) {
+        lv_timer_handler();
+        k_msleep(20);
+    }   
     while (1) { k_sleep(K_SECONDS(1)); }
 }
