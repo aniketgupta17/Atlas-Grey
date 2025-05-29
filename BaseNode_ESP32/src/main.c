@@ -349,7 +349,7 @@ static void bt_ready(int err)
     printk("[ESP-DEVKIT] bt_le_scan_start() = %d\n", scan_err);
     
     if (scan_err == 0) {
-        printk("[ESP-DEVKIT] 🔍 Scanning for devices...\n");
+        printk("[ESP-DEVKIT] Scanning for devices...\n");
     }
 }
 
