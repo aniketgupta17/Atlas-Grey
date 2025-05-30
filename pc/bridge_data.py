@@ -6,7 +6,7 @@ import requests
 from datetime import datetime
 
 # Serial config
-SERIAL_PORT = '/dev/cu.usbserial-130'
+SERIAL_PORT = '/dev/cu.usbserial-140'
 BAUD_RATE = 115200
 
 # InfluxDB config
@@ -54,17 +54,15 @@ def parse_esp_devkit_line(line):
     return None, None, None
 
 def acc_data(vibration_rms):
-    """Generate  accelerometer data that matches the given vibration_rms"""
-    # Create realistic distribution of vibration across axes
-    # Typically X-axis (bridge length) has most vibration
+    
     base_factor = vibration_rms / math.sqrt(3)  # Base distribution
     
-    # Add some realistic variation
+
     accel_x = base_factor * random.uniform(1.2, 1.8)  # X-axis dominant
     accel_y = base_factor * random.uniform(0.6, 1.0)  # Y-axis moderate
     accel_z = base_factor * random.uniform(0.4, 0.8)  # Z-axis minimal
     
-    # Ensure the RMS matches (approximately)
+
     calculated_rms = math.sqrt(accel_x**2 + accel_y**2 + accel_z**2)
     if calculated_rms > 0:
         scale_factor = vibration_rms / calculated_rms
@@ -93,14 +91,14 @@ def create_line_protocol(distance, vibration_rms, timestamp_ns):
 
     temperature, humidity, battery_voltage = env_data()
     
-    # Calculate safety metrics with new thresholds
+
     safety_score = calculate_safety_score(distance, vibration_rms)
     boom_status = determine_boom_gate_status(distance, vibration_rms)
     
     clearance_status = int(distance < WARNING_CLEARANCE)  # 1 if distance < 15cm
     vibration_status = int(vibration_rms >= WARNING_VIBRATION)  # 1 if vibration >= 1.0g
 
-    # Enhanced sensor measurement (matching a generator)
+
     sensor_fields = [
         f"ultrasonic_distance={distance}",
         f"accel_x={accel_x}",
